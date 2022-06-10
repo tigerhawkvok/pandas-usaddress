@@ -1,6 +1,7 @@
 #!python3
 """
 """
+# cSpell:words usaddress, subaddress, fillna
 
 import csv
 from pathlib import Path
@@ -26,52 +27,40 @@ abb_dict, num_dict, str_dict = (dict(__csvLoader(_x)) for _x in ('abbreviations.
 
 
 usaddress_fields = [
-                    "AddressNumber",
-                    "AddressNumberPrefix",
-                    "AddressNumberSuffix",
-                    "BuildingName",
-                    "CornerOf",
-                    "IntersectionSeparator",
-                    "LandmarkName",
-                    "NotAddress",
-                    "OccupancyType",
-                    "OccupancyIdentifier",
-                    "PlaceName",
-                    "Recipient",
-                    "StateName",
-                    "StreetName",
-                    "StreetNamePreDirectional",
-                    "StreetNamePreModifier",
-                    "StreetNamePreType",
-                    "StreetNamePostDirectional",
-                    "StreetNamePostModifier",
-                    "StreetNamePostType",
-                    "SubaddressIdentifier",
-                    "SubaddressType",
-                    "USPSBoxGroupID",
-                    "USPSBoxGroupType",
-                    "USPSBoxID",
-                    "USPSBoxType",
-                    "ZipCode"
-                    ]
+    "AddressNumber",
+    "AddressNumberPrefix",
+    "AddressNumberSuffix",
+    "BuildingName",
+    "CornerOf",
+    "IntersectionSeparator",
+    "LandmarkName",
+    "NotAddress",
+    "OccupancyType",
+    "OccupancyIdentifier",
+    "PlaceName",
+    "Recipient",
+    "StateName",
+    "StreetName",
+    "StreetNamePreDirectional",
+    "StreetNamePreModifier",
+    "StreetNamePreType",
+    "StreetNamePostDirectional",
+    "StreetNamePostModifier",
+    "StreetNamePostType",
+    "SubaddressIdentifier",
+    "SubaddressType",
+    "USPSBoxGroupID",
+    "USPSBoxGroupType",
+    "USPSBoxID",
+    "USPSBoxType",
+    "ZipCode"
+]
 
 def usaddress_field_creation(x,i):
     try:
         return x[0][i]
-    except:
+    except Exception:
         return None
-
-def trim(x:Any) -> Union[str, None]:
-    """
-    Original `trim` implementation for pandas-usaddress
-    """
-    x = str(x)
-    x = x.split()
-    x = ' '.join(x)
-    if len(x) == 0:
-        return None
-    else:
-        return x
 
 def taggit(x):
     try:
@@ -79,38 +68,34 @@ def taggit(x):
     except Exception:
         return None
 
-def lowercase(x:str) -> Union[str, None]:
+def removeExtraWhitespace(column:pd.Series) -> pd.Series[str]:
     """
-    Original `lowercase` implementation for pandas-usaddress
+    Removes extra whitespace from a column.
     """
-    try:
-        return x.lower()
-    except:
-        return None
+    return column.str.replace(r"\s+", " ").str.strip()
 
-def tagColumn(column:pd.Series) -> pd.Series:
+def cleanColumn(column:pd.Series) -> pd.Series[str]:
     """
-    Tags a column of addresses.
+    Cleans a column of addresses.
     """
-    strCol = cast(pd.Series[str], column.fillna("").astype(str).str.replace(r'[^\w\s\-]', '').str.replace(r"\s+", " ").str.strip().str.lower())
+    strCol = cast(pd.Series[str], removeExtraWhitespace(column.fillna("").astype(str).str.replace(r'[^\w\s\-]', '')).str.lower())
     return strCol.replace("", None)
 
 def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full', standardize:bool= False) -> pd.DataFrame:
+    """
+    Tags a DataFrame of addresses.
+    """
     df = dfa.copy()
-    df['odictaddress'] = ""
+    df['oDictAddress'] = ""
     for i in address_columns:
         df[i].fillna('', inplace=True)
-    df['odictaddress'] = df['odictaddress'].str.cat(df[address_columns].astype(str), sep=" ", na_rep='')
-    df['odictaddress'] = df['odictaddress'].str.replace(r'[^\w\s\-]','')
-    df['odictaddress'] = df['odictaddress'].apply(lambda x: trim(x))
-    df['odictaddress'] = df['odictaddress'].apply(lambda x: lowercase(x))
-    df['odictaddress'] = df['odictaddress'].apply(lambda x: taggit(x))
-
+    df['oDictAddress'] = cleanColumn(df['oDictAddress'].str.cat(df[address_columns].astype(str), sep=" ", na_rep=''))
+    df['oDictAddress'] = df['oDictAddress'].apply(taggit)
 
     for i in usaddress_fields:
-        df[i] = df['odictaddress'].apply(lambda x: usaddress_field_creation(x,i))
+        df[i] = df['oDictAddress'].apply(lambda x: usaddress_field_creation(x,i))
 
-    df = df.drop(columns='odictaddress')
+    df = df.drop(columns='oDictAddress')
     # standardize parameter
     if not isinstance(standardize, bool):
         raise TypeError("standardize must be a boolean.")
@@ -122,9 +107,14 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
         df["StreetName"] = df["StreetName"].apply(lambda x: num_dict.get(x, x))
         df["AddressNumber"] = df["AddressNumber"].apply(lambda x: str_dict.get(x, x))
 
+    def createConcatenatedColumn(columns:Sequence[str]) -> pd.Series:
+        """
+        """
+        return removeExtraWhitespace(pd.Series("", index= list(range(len(df)))).str.cat(df[columns], sep= " ", na_rep= ""))
 
 
     if granularity=='full':
+        # No further work necessary
         pass
     elif granularity == 'high':
         df.drop(columns=[
@@ -138,22 +128,10 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
                 "USPSBoxGroupType",
             ],inplace=True)
     elif granularity == 'medium':
-        df['StreetNamePrefix'] = ''
-        df['StreetNamePrefix'] = df['StreetNamePrefix'].str.cat(df[['StreetNamePreModifier', 'StreetNamePreType']], sep=" ", na_rep='')
-        df['StreetNamePrefix'] = df['StreetNamePrefix'].apply(lambda x: trim(x))
-
-        df['StreetNameSuffix'] = ''
-        df['StreetNameSuffix'] = df['StreetNameSuffix'].str.cat(df[['StreetNamePostType', 'StreetNamePostModifier']], sep=" ", na_rep='')
-        df['StreetNameSuffix'] = df['StreetNameSuffix'].apply(lambda x: trim(x))
-
-        df['USPSBox'] = ''
-        df['USPSBox'] = df['USPSBox'].str.cat(df[['USPSBoxType', 'USPSBoxID']], sep=" ", na_rep='')
-        df['USPSBox'] = df['USPSBox'].apply(lambda x: trim(x))
-
-        df['OccupancySuite'] = ''
-        df['OccupancySuite'] = df['OccupancySuite'].str.cat(df[['OccupancyType', 'OccupancyIdentifier']], sep=" ", na_rep='')
-        df['OccupancySuite'] = df['OccupancySuite'].apply(lambda x: trim(x))
-
+        df['StreetNamePrefix'] = createConcatenatedColumn(['StreetNamePreModifier', 'StreetNamePreType'])
+        df['StreetNameSuffix'] = createConcatenatedColumn(['StreetNamePostType', 'StreetNamePostModifier'])
+        df['USPSBox'] = createConcatenatedColumn(['USPSBoxType', 'USPSBoxID'])
+        df['OccupancySuite'] = createConcatenatedColumn(['OccupancyType', 'OccupancyIdentifier'])
         df.drop(columns=[
                 "Recipient",
                 "BuildingName",
@@ -175,11 +153,10 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
                 "USPSBoxID",
                 "OccupancyType",
                 "OccupancyIdentifier"
-            ],inplace=True)
+            ],inplace= True)
 
     elif granularity=='low':
-        df['StreetTag'] = ""
-        df['StreetTag'] = df['StreetTag'].str.cat(df[
+        df['StreetTag'] = createConcatenatedColumn(
             [
                 #"AddressNumber",
                 "StreetNamePreDirectional",
@@ -193,9 +170,7 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
                 "USPSBoxID",
                 "OccupancyType",
                 "OccupancyIdentifier"
-            ]], sep=" ", na_rep='')
-        df['StreetTag'] = df['StreetTag'].apply(lambda x: trim(x))
-
+            ])
 
         df.drop(columns=[
             "Recipient",
@@ -222,10 +197,10 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
             "StreetNamePreDirectional",
             "StreetName",
             "StreetNamePostDirectional"
-            ],inplace=True)
+            ], inplace=True)
+
     elif granularity=='single':
-        df['SingleLine'] = ""
-        df['SingleLine'] = df['SingleLine'].str.cat(df[
+        df['SingleLine'] = createConcatenatedColumn(
             [
                 "AddressNumber",
                 "StreetNamePreDirectional",
@@ -242,8 +217,7 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
                 "PlaceName",
                 "StateName",
                 "ZipCode"
-            ]], sep=" ", na_rep='')
-        df['SingleLine'] = df['SingleLine'].apply(lambda x: trim(x))
+            ])
 
         df.drop(columns=[
                 "Recipient",
@@ -274,6 +248,6 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
                 "StateName",
                 "ZipCode"
             ],inplace=True)
-
-    df = df.replace({'None': np.nan, 'none': np.nan, 'nan': np.nan, 'NaN': np.nan, None: np.nan, '': np.nan}).copy()
-    return df
+    else:
+        raise ValueError("Granularity must be one of 'full', 'high', 'medium', 'low', 'single'")
+    return df.replace({'None': np.nan, 'none': np.nan, 'nan': np.nan, 'NaN': np.nan, None: np.nan, '': np.nan})
