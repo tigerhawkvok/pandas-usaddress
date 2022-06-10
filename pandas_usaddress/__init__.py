@@ -5,13 +5,13 @@
 
 import csv
 from pathlib import Path
-from typing import Any, Iterator, Sequence, Union, cast
+from typing import Any, Dict, Iterator, Sequence, Union, cast
 from pkg_resources import resource_filename
 import pandas as pd
 import numpy as np
 import usaddress
 
-def __csvLoader(csvFile:Union[str, Path]) -> Iterator:
+def __csvDictLoader(csvFile:Union[str, Path]) -> Dict:
     """
     Loads a csv file and returns an iterator of the rows.
     """
@@ -20,10 +20,11 @@ def __csvLoader(csvFile:Union[str, Path]) -> Iterator:
         raise FileNotFoundError(f"`{resourcePath.resolve()}` does not exist.")
     with open(resourcePath, 'r', encoding= "utf-8") as f:
         reader = csv.reader(f)
-    return reader
+        _dict = dict(reader)
+    return _dict
 
 # Reference dictionaries
-abb_dict, num_dict, str_dict = (dict(__csvLoader(_x)) for _x in ('abbreviations.csv', 'numbered_streets.csv', 'street_numbers.csv'))
+abb_dict, num_dict, str_dict = (dict(__csvDictLoader(_x)) for _x in ('abbreviations.csv', 'numbered_streets.csv', 'street_numbers.csv'))
 
 
 usaddress_fields = [
@@ -68,17 +69,17 @@ def taggit(x):
     except Exception:
         return None
 
-def removeExtraWhitespace(column:pd.Series) -> pd.Series[str]:
+def removeExtraWhitespace(column:pd.Series) -> pd.Series:
     """
     Removes extra whitespace from a column.
     """
     return column.str.replace(r"\s+", " ").str.strip()
 
-def cleanColumn(column:pd.Series) -> pd.Series[str]:
+def cleanColumn(column:pd.Series) -> pd.Series:
     """
     Cleans a column of addresses.
     """
-    strCol = cast(pd.Series[str], removeExtraWhitespace(column.fillna("").astype(str).str.replace(r'[^\w\s\-]', '')).str.lower())
+    strCol = cast(pd.Series, removeExtraWhitespace(column.fillna("").astype(str).str.replace(r'[^\w\s\-]', '')).str.lower())
     return strCol.replace("", None)
 
 def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full', standardize:bool= False) -> pd.DataFrame:
@@ -251,3 +252,7 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
     else:
         raise ValueError("Granularity must be one of 'full', 'high', 'medium', 'low', 'single'")
     return df.replace({'None': np.nan, 'none': np.nan, 'nan': np.nan, 'NaN': np.nan, None: np.nan, '': np.nan})
+
+
+if __name__ == "__main__":
+    print("This module is not runnable. Please import `tag` from this module instead.")
