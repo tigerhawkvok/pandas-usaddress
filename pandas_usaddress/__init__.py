@@ -4,12 +4,17 @@
 # cSpell:words usaddress, subaddress, fillna
 
 import csv
+import re
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterator, Sequence, Union, cast
+from collections import OrderedDict
+from typing import  Any, Dict,  List, Sequence, Tuple, Union, cast
 from pkg_resources import resource_filename
 import pandas as pd
 import numpy as np
 import usaddress
+
+NULLISH = re.compile(r"(^none|^nan|^)$", flags= re.IGNORECASE)
 
 def __csvDictLoader(csvFile:Union[str, Path]) -> Dict:
     """
@@ -57,16 +62,24 @@ usaddress_fields = [
     "ZipCode"
 ]
 
-def usaddress_field_creation(x,i):
+def usaddress_field_creation(x:Tuple[Dict[str, str], Any], i:str) -> Union[str, None]:
+    """
+    Return key `i` from the dictionary element of `x` at position 0
+    (as returned by usaddress.tag()); if the key is not found, return None.
+    """
     try:
         return x[0][i]
-    except Exception:
+    except (KeyError, IndexError):
         return None
 
-def taggit(x):
+@lru_cache(maxsize= None)
+def tagAddressString(x:str) -> Union[Tuple["OrderedDict[str, str]", str], None]:
+    """
+    Use USAddress to tag the address parts of a string.
+    """
     try:
         return usaddress.tag(x)
-    except Exception:
+    except Exception: #pylint: disable= broad-except
         return None
 
 def removeExtraWhitespace(column:pd.Series) -> pd.Series:
@@ -82,7 +95,7 @@ def cleanColumn(column:pd.Series) -> pd.Series:
     strCol = cast(pd.Series, removeExtraWhitespace(column.fillna("").astype(str).str.replace(r'[^\w\s\-]', '')).str.lower())
     return strCol.replace("", None)
 
-def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full', standardize:bool= False) -> pd.DataFrame:
+def tag(dfa:pd.DataFrame, address_columns:List[str], granularity:str='full', standardize:bool= False) -> pd.DataFrame:
     """
     Tags a DataFrame of addresses.
     """
@@ -91,24 +104,29 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
     for i in address_columns:
         df[i].fillna('', inplace=True)
     df['oDictAddress'] = cleanColumn(df['oDictAddress'].str.cat(df[address_columns].astype(str), sep=" ", na_rep=''))
-    df['oDictAddress'] = df['oDictAddress'].apply(taggit)
+    df['oDictAddress'] = df['oDictAddress'].apply(tagAddressString)
 
     for i in usaddress_fields:
-        df[i] = df['oDictAddress'].apply(lambda x: usaddress_field_creation(x,i))
+        df[i] = df['oDictAddress'].apply(lambda x: usaddress_field_creation(x, i))
 
     df = df.drop(columns='oDictAddress')
     # standardize parameter
     if not isinstance(standardize, bool):
         raise TypeError("standardize must be a boolean.")
     if standardize:
-        df["StreetNamePreDirectional"] = df["StreetNamePreDirectional"].apply(lambda x: abb_dict.get(x, x))
-        df["StreetNamePreType"] = df["StreetNamePreType"].apply(lambda x: abb_dict.get(x, x))
-        df["StreetNamePostDirectional"] = df["StreetNamePostDirectional"].apply(lambda x: abb_dict.get(x, x))
-        df["StreetNamePostType"] = df["StreetNamePostType"].apply(lambda x: abb_dict.get(x, x))
-        df["StreetName"] = df["StreetName"].apply(lambda x: num_dict.get(x, x))
-        df["AddressNumber"] = df["AddressNumber"].apply(lambda x: str_dict.get(x, x))
+        standardizeCols:List[Tuple[str, dict]] = [
+            ("StreetNamePreDirectional", abb_dict),
+            ("StreetNamePreType", abb_dict),
+            ("StreetNamePostDirectional", abb_dict),
+            ("StreetNamePostType", abb_dict),
+            ("StreetName", num_dict),
+            ('AddressNumber', str_dict),
+        ]
+        for col, mapper in standardizeCols:
+            tmp = df[col].copy()
+            df[col] = df[col].map(mapper).fillna(tmp)
 
-    def createConcatenatedColumn(columns:Sequence[str]) -> pd.Series:
+    def createConcatenatedColumn(columns:List[str]) -> pd.Series:
         """
         """
         return removeExtraWhitespace(pd.Series("", index= list(range(len(df)))).str.cat(df[columns], sep= " ", na_rep= ""))
@@ -251,8 +269,7 @@ def tag(dfa:pd.DataFrame, address_columns:Sequence[str], granularity:str='full',
             ],inplace=True)
     else:
         raise ValueError("Granularity must be one of 'full', 'high', 'medium', 'low', 'single'")
-    return df.replace({'None': np.nan, 'none': np.nan, 'nan': np.nan, 'NaN': np.nan, None: np.nan, '': np.nan})
-
+    return df.replace(NULLISH, np.nan).replace({None: np.nan})
 
 if __name__ == "__main__":
     print("This module is not runnable. Please import `tag` from this module instead.")

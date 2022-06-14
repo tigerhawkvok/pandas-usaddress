@@ -1,14 +1,14 @@
 [tool.poetry]
 name = "pandas-usaddress"
-version = "0.23.1"
+version = "0.23.2"
 description = "The usaddress library made easy with Pandas"
 authors = ["Keith Lyons <lyonk71@gmail.com>, Philip Kahn <pkahn@costar.com>"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.7.2"
 pandas = "^1.1"
-usaddress = "^0.5.10"
+usaddress = { git = "https://github.com/tigerhawkvok/usaddress.git" }
 numpy = "^1.20"
 
 [tool.poetry.dev-dependencies]
