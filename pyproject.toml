@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pandas-usaddress"
-version = "0.23.2"
+version = "0.23.4"
 description = "The usaddress library made easy with Pandas"
 authors = ["Keith Lyons <lyonk71@gmail.com>, Philip Kahn <pkahn@costar.com>"]
 license = "MIT"
