@@ -69,7 +69,7 @@ def usaddress_field_creation(x:Tuple[Dict[str, str], Any], i:str) -> Union[str, 
     """
     try:
         return x[0][i]
-    except (KeyError, IndexError):
+    except (KeyError, IndexError, TypeError):
         return None
 
 @lru_cache(maxsize= None)
